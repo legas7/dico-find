@@ -71,7 +71,7 @@ pub async fn run(root: String, concurrency: usize) -> io::Result<(ScanResult, us
     }
 
     let results = results.into_iter().reduce(|mut acc, mut i| {
-        acc.dicom_file_count += i.dicom_entries.len();
+        acc.dicom_file_count += i.dicom_file_count;
         acc.total_file_count += i.total_file_count;
         acc.dicom_entries.append(&mut i.dicom_entries);
         acc
@@ -91,14 +91,5 @@ impl Display for DicomEntry {
             self.patient_name.as_deref().unwrap_or_default(),
             self.patient_id.as_deref().unwrap_or_default()
         )
-    }
-}
-
-impl ScanResult {
-    pub fn add_entry(&mut self, e: DicomEntry) {
-        self.dicom_entries.push(e);
-    }
-    pub fn inc_total_file_count(&mut self) {
-        self.total_file_count += 1;
     }
 }

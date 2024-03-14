@@ -8,7 +8,8 @@ use super::ScanResult;
 
 pub async fn process_dir(mut entries: ReadDirStream) -> (ScanResult, Vec<PathBuf>) {
     let mut dir_entries = Vec::<PathBuf>::new();
-    let mut result = ScanResult::default();
+    let mut file_entries = Vec::<PathBuf>::new();
+    let mut total_file_count = 0usize;
 
     while let Some(entry) = entries.next().await {
         match entry {
@@ -19,12 +20,8 @@ pub async fn process_dir(mut entries: ReadDirStream) -> (ScanResult, Vec<PathBuf
                         dir_entries.push(entry.path());
                     } else if meta.is_file() {
                         log::debug!("Processing new file: {:?}", entry.path());
-                        result.inc_total_file_count();
-                        if let Some(mut dentry) = dicom_extractor::handle_file(entry.path()) {
-                            dentry.filepath = Some(entry.path());
-                            log::debug!("Extracted attributes from dicom file: {:?}", dentry);
-                            result.add_entry(dentry);
-                        }
+                        total_file_count += 1;
+                        file_entries.push(entry.path());
                     }
                 }
                 Err(e) => log::warn!(
@@ -36,5 +33,22 @@ pub async fn process_dir(mut entries: ReadDirStream) -> (ScanResult, Vec<PathBuf
             Err(e) => log::warn!("Error reading from ReadDirStream: {}", e),
         }
     }
-    (result, dir_entries)
+    let results = tokio::task::spawn_blocking(|| {
+        file_entries
+            .into_iter()
+            .filter_map(dicom_extractor::handle_file)
+            .collect::<Vec<_>>()
+    })
+    .await
+    .inspect_err(|e| log::warn!("Error joining task handle: {}", e))
+    .unwrap_or_default();
+
+    (
+        ScanResult {
+            dicom_file_count: results.len(),
+            dicom_entries: results,
+            total_file_count,
+        },
+        dir_entries,
+    )
 }
