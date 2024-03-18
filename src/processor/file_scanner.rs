@@ -1,13 +1,16 @@
 use std::path::PathBuf;
 
+use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReadDirStream, StreamExt};
 
 use crate::processor::dicom_extractor;
 
 use super::ScanResult;
 
-pub async fn process_dir(mut entries: ReadDirStream) -> (ScanResult, Vec<PathBuf>) {
-    let mut dir_entries = Vec::<PathBuf>::new();
+pub async fn process_dir(
+    mut entries: ReadDirStream,
+    tx: mpsc::UnboundedSender<PathBuf>,
+) -> ScanResult {
     let mut file_entries = Vec::<PathBuf>::new();
     let mut total_file_count = 0usize;
 
@@ -17,7 +20,7 @@ pub async fn process_dir(mut entries: ReadDirStream) -> (ScanResult, Vec<PathBuf
                 Ok(meta) => {
                     if meta.is_dir() {
                         log::debug!("Visiting new dir: {:?}", entry.path());
-                        dir_entries.push(entry.path());
+                        _ = tx.send(entry.path());
                     } else if meta.is_file() {
                         log::debug!("Processing new file: {:?}", entry.path());
                         total_file_count += 1;
@@ -43,12 +46,9 @@ pub async fn process_dir(mut entries: ReadDirStream) -> (ScanResult, Vec<PathBuf
     .inspect_err(|e| log::warn!("Error joining task handle: {}", e))
     .unwrap_or_default();
 
-    (
-        ScanResult {
-            dicom_file_count: results.len(),
-            dicom_entries: results,
-            total_file_count,
-        },
-        dir_entries,
-    )
+    ScanResult {
+        dicom_file_count: results.len(),
+        dicom_entries: results,
+        total_file_count,
+    }
 }

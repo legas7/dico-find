@@ -22,51 +22,41 @@ pub struct ScanResult {
 
 pub async fn run(root: String, concurrency: usize) -> io::Result<(ScanResult, usize)> {
     let mut results = Vec::<ScanResult>::new();
-    let mut work_queue = Vec::<PathBuf>::new();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut task_set = JoinSet::new();
     let mut total_dir_count = 1usize;
 
     let root_dir = tokio::fs::read_dir(root).await?;
+    let txc = tx.clone();
 
     // spawn initial task for root dir
     task_set.spawn(async move {
         let entries = ReadDirStream::new(root_dir);
-        file_scanner::process_dir(entries).await
+        file_scanner::process_dir(entries, txc).await
     });
 
-    // extract results from root and spawn worker tasks
     while let Some(join_result) = task_set.join_next().await {
-        match join_result {
-            Ok((r, mut d)) => {
-                total_dir_count += d.len();
-                work_queue.append(&mut d);
-                results.push(r);
+        if let Ok(sr) = join_result.inspect_err(|e| log::warn!("Error joining task handle: {}", e))
+        {
+            results.push(sr);
+        }
 
-                while task_set.len() <= concurrency {
-                    if let Some(path) = work_queue.pop() {
-                        task_set.spawn(async move {
-                            match tokio::fs::read_dir(&path).await {
-                                Ok(rd) => {
-                                    let rd_stream = ReadDirStream::new(rd);
-                                    file_scanner::process_dir(rd_stream).await
-                                }
-                                Err(e) => {
-                                    log::warn!(
-                                        "Error reading entries in: {}. Details: {}",
-                                        path.to_string_lossy(),
-                                        e
-                                    );
-                                    (ScanResult::default(), Vec::default())
-                                }
-                            }
-                        });
+        while let Ok(dir) = rx.try_recv() {
+            let txc = tx.clone();
+            if task_set.len() <= concurrency {
+                total_dir_count += 1;
+                task_set.spawn(async move {
+                    if let Ok(rd) = tokio::fs::read_dir(&dir).await {
+                        let rd_stream = ReadDirStream::new(rd);
+                        file_scanner::process_dir(rd_stream, txc).await
                     } else {
-                        // no new directories to visit
-                        break;
+                        ScanResult::default()
                     }
-                }
+                });
+            } else {
+                _ = tx.send(dir);
+                break;
             }
-            Err(e) => log::warn!("Error joining task handle: {}", e),
         }
     }
 
