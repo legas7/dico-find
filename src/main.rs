@@ -1,4 +1,5 @@
 mod processor;
+mod sync_processor;
 mod utils;
 
 use clap::Parser;
@@ -36,9 +37,12 @@ async fn main() {
 
     log::info!("Starting scan in '{}'", args.path);
     let start = Instant::now();
-    let (results, scanned_dirs) = processor::run(args.path, concurrency)
-        .await
-        .expect("Processor failed to start");
+    let (results, scanned_dirs) =
+        sync_processor::run(args.path, concurrency).expect("Processor failed to start");
+
+    // let (results, scanned_dirs) = processor::run(args.path, concurrency)
+    //     .await
+    //     .expect("Processor failed to start");
 
     log::info!(
         "Found {} DICOM files across {} directories. Scan took {:.2?}. Processed {} files.",

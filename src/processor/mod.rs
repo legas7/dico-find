@@ -1,4 +1,4 @@
-mod dicom_extractor;
+pub mod dicom_extractor;
 mod file_scanner;
 
 use std::{fmt::Display, io, path::PathBuf};
@@ -9,8 +9,8 @@ use tokio_stream::wrappers::ReadDirStream;
 #[derive(Debug)]
 pub struct DicomEntry {
     pub filepath: Option<PathBuf>,
-    patient_name: Option<String>,
-    patient_id: Option<String>,
+    pub patient_name: Option<String>,
+    pub patient_id: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -20,6 +20,7 @@ pub struct ScanResult {
     pub total_file_count: usize,
 }
 
+#[allow(dead_code)]
 pub async fn run(root: String, concurrency: usize) -> io::Result<(ScanResult, usize)> {
     let mut results = Vec::<ScanResult>::new();
     let mut work_queue = Vec::<PathBuf>::new();

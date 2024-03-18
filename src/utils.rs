@@ -26,5 +26,5 @@ where
     for item in items {
         writeln!(file, "{}", item.to_string()).expect("Failed to save result");
     }
-    _ = file.flush().expect("Failed to flush buffer");
+    file.flush().expect("Failed to flush buffer");
 }
